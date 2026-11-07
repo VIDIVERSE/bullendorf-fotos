@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1534d6">
+<meta name="robots" content="noindex">
+<title>Fotowand</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font:16px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;color:#fff;background:linear-gradient(160deg,#1534d6 0%,#58a6ff 35%,#c8b4ff 55%,#e050de 78%,#a81bbd 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;text-align:center}
+h1{margin:0 0 6px;font:900 30px/1.1 Georgia,"Times New Roman",serif;text-shadow:3px 3px 0 rgba(0,0,0,.6)}
+.ev{font-weight:700;text-shadow:1px 1px 0 rgba(0,0,0,.5);min-height:1.4em}
+.card{width:100%;max-width:400px;margin-top:20px;background:rgba(15,16,18,.82);border-radius:14px;padding:22px 18px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.spin{width:38px;height:38px;margin:4px auto 14px;border:4px solid rgba(255,255,255,.2);border-top-color:#f0a020;border-radius:50%;animation:s 0.9s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+#msg{font-size:15px;color:#ddd}
+button{display:none;width:100%;margin-top:16px;padding:14px;border:0;border-radius:8px;background:#f0a020;color:#1a1206;font:700 16px system-ui}
+</style>
+</head>
+<body>
+<h1>Dein Foto auf<br>die LED-Wand!</h1>
+<div class="ev" id="ev"></div>
+<div class="card">
+  <div class="spin" id="spin"></div>
+  <div id="msg">Verbinde mit der Fotowand …</div>
+  <button id="again">Nochmal versuchen</button>
+</div>
+<script>
+const REPO='VIDIVERSE/bullendorf-fotos';
+const $=id=>document.getElementById(id);
+let tries=0, timer=null;
+function show(t,spin,btn){ $('msg').textContent=t; $('spin').style.display=spin?'block':'none'; $('again').style.display=btn?'block':'none'; }
+async function getJson(url,ms){ const c=new AbortController(), t=setTimeout(()=>c.abort(),ms); try{ const r=await fetch(url,{cache:'no-store',signal:c.signal}); if(!r.ok) return null; return await r.json(); }catch(e){ return null; } finally{ clearTimeout(t); } }
+async function target(){
+  const a=getJson('target.json?t='+Date.now(),6000);
+  const b=getJson('https://api.github.com/repos/'+REPO+'/contents/target.json?t='+Date.now(),6000).then(j=>{ try{ return j&&j.content?JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\s/g,''))))):null; }catch(e){ return null; } });
+  const L=(await Promise.all([a,b])).filter(Boolean).sort((x,y)=>(y.ts||0)-(x.ts||0));
+  return L[0]||null;
+}
+async function go(){
+  clearTimeout(timer); tries++; show('Verbinde mit der Fotowand …',true,false);
+  const t=await target();
+  if (t && t.event){ $('ev').textContent=t.event; document.title='Fotowand · '+t.event; }
+  if (!t || !t.on || !t.url || !t.code){ show('Die Fotowand ist gerade nicht aktiv. Sobald sie startet, geht es hier automatisch weiter.',false,true); timer=setTimeout(go,15000); return; }
+  const dest=t.url.replace(/\/+$/,'')+'/g/'+encodeURIComponent(t.code)+'/';
+  const ping=await getJson(dest+'info',8000);
+  if (ping && ping.ok){ show('Gleich geht’s los …',true,false); location.replace(dest); return; }
+  if (tries<4){ timer=setTimeout(go,4000); return; }
+  show('Die Fotowand ist gerade nicht erreichbar. Wir versuchen es weiter …',false,true); timer=setTimeout(go,15000);
+}
+$('again').onclick=()=>{ tries=0; go(); };
+go();
+</script>
+</body>
+</html>
