@@ -76,22 +76,26 @@ const $=id=>document.getElementById(id);
 let tries=0, timer=null;
 function show(t,spin,btn){ $('msg').textContent=t; $('spin').style.display=spin?'block':'none'; $('again').style.display=btn?'block':'none'; }
 async function getJson(url,ms){ const c=new AbortController(), t=setTimeout(()=>c.abort(),ms); try{ const r=await fetch(url,{cache:'no-store',signal:c.signal}); if(!r.ok) return null; return await r.json(); }catch(e){ return null; } finally{ clearTimeout(t); } }
-async function target(){
-  const a=getJson('target.json?t='+Date.now(),6000);
-  const b=getJson('https://api.github.com/repos/'+REPO+'/contents/target.json?t='+Date.now(),6000).then(j=>{ try{ return j&&j.content?JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\s/g,''))))):null; }catch(e){ return null; } });
-  const L=(await Promise.all([a,b])).filter(Boolean).sort((x,y)=>(y.ts||0)-(x.ts||0));
-  return L[0]||null;
-}
+const KIND='g', NAME='Fotowand', CK='pp_last_'+KIND;
+const pick=t=>t&&t.on&&t.url&&t.code?{url:t.url,code:t.code}:null;
+const destOf=p=>p.url.replace(/\/+$/,'')+'/'+KIND+'/'+encodeURIComponent(p.code)+'/';
+function warm(u){ try{ const o=new URL(u).origin; if (document.querySelector('link[href="'+o+'"]')) return; const l=document.createElement('link'); l.rel='preconnect'; l.href=o; document.head.appendChild(l); }catch(e){} }
+/* Schnellster Weg: alle bekannten Adressen gleichzeitig prüfen, die erste, die antwortet, gewinnt */
+let done=false, tried={};
+function tryDest(dest){ if (done||tried[dest]) return; tried[dest]=1; warm(dest);
+  getJson(dest+'info',7000).then(j=>{ if (done||!j||!j.ok) return; done=true; try{ localStorage.setItem(CK,dest); }catch(e){} show('Gleich geht’s los …',true,false); location.replace(dest); }); }
+function seen(t){ if (!t) return; if (t.event && !$('ev').textContent){ $('ev').textContent=t.event; document.title=NAME+' · '+t.event; } const p=pick(t); if (p) tryDest(destOf(p)); return p; }
 async function go(){
-  clearTimeout(timer); tries++; show('Verbinde mit der Fotowand …',true,false);
-  const t=await target();
-  if (t && t.event){ $('ev').textContent=t.event; document.title='Fotowand · '+t.event; }
-  if (!t || !t.on || !t.url || !t.code){ show('Die Fotowand ist gerade nicht aktiv. Sobald sie startet, geht es hier automatisch weiter.',false,true); timer=setTimeout(go,15000); return; }
-  const dest=t.url.replace(/\/+$/,'')+'/g/'+encodeURIComponent(t.code)+'/';
-  const ping=await getJson(dest+'info',8000);
-  if (ping && ping.ok){ show('Gleich geht’s los …',true,false); location.replace(dest); return; }
-  if (tries<4){ timer=setTimeout(go,4000); return; }
-  show('Die Fotowand ist gerade nicht erreichbar. Wir versuchen es weiter …',false,true); timer=setTimeout(go,15000);
+  clearTimeout(timer); tries++; done=false; tried={}; show('Verbinde mit '+(KIND==='g'?'der ':'dem ')+NAME+' …',true,false);
+  try{ const last=localStorage.getItem(CK); if (last) tryDest(last); }catch(e){}
+  const a=getJson('target.json?t='+Date.now(),5000).then(seen);
+  const b=getJson('https://api.github.com/repos/'+REPO+'/contents/target.json?t='+Date.now(),5000).then(j=>{ try{ return j&&j.content?seen(JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\s/g,'')))))):null; }catch(e){ return null; } });
+  const res=await Promise.all([a,b]);
+  await new Promise(r=>setTimeout(r,res.some(Boolean)?7500:0));
+  if (done) return;
+  if (!res.some(Boolean)){ show((KIND==='g'?'Die ':'Das ')+NAME+' ist gerade nicht aktiv. Sobald '+(KIND==='g'?'sie':'es')+' startet, geht es hier automatisch weiter.',false,true); timer=setTimeout(go,12000); return; }
+  if (tries<3){ timer=setTimeout(go,1500); return; }
+  show((KIND==='g'?'Die ':'Das ')+NAME+' ist gerade nicht erreichbar. Wir versuchen es weiter …',false,true); timer=setTimeout(go,12000);
 }
 $('again').onclick=()=>{ tries=0; go(); };
 go();
